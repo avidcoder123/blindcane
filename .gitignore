@@ -1,0 +1,11 @@
+pyvenv.cfg
+bin
+include
+lib
+lib64
+share
+*.pt
+*.mp4
+*.save
+__pycache__
+runs
