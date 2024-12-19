@@ -7,62 +7,31 @@ import time
 import pyttsx3
 import math
 from objSizes import meterSizes
-#import pygame
-#import pygame.camera
+
+from picamera2 import Picamera2
 engine = pyttsx3.init()
 engine.say("Starting program")
 engine.runAndWait()
-#def tracefunc(frame, event, arg, indent=[0]):
-#      if event == "call":
-#          indent[0] += 2
-#          print("-" * indent[0] + "> call function", frame.f_code.co_name)
-#      elif event == "return":
-#          print("<" + "-" * indent[0], "exit function", frame.f_code.co_name)
-#          indent[0] -= 2
-#      return tracefunc
+
 
 import sys
-#sys.setprofile(tracefunc)
-# cls = False
-
-# if cls:
-#     model = YOLO('yolov8n-cls.pt')
-# else:
-#     model = YOLO('yolov8n.pt')
 
 
-
-# #results = model.train(data = "coco128.yaml", epochs = 5)
-
-# #results = model.val()
-
-# result = model.predict("Collage.png", save_conf=True, verbose=False)[0]
-# if cls:
-#     classname = [result.names[x] for x in result.probs.top5]
-# else:
-#     classname = [result.names[int(x)] for x in result.boxes.cls]
-
-# print(classname)
 print("Loading YOLO...")
-model = YOLO("/home/pi/yolocanefinal/yolov8n.pt")
+model = YOLO("/home/pi/yolocanefinal/yolov8s.pt")
 print("Done!")
 
 print("Initializing camera...")
-#pygame.camera.init()
-#cameras = pygame.camera.list_cameras() #Camera detected or not
-#print(cameras)
-#print("Done!")
 
-display = True
-#cap = cv2.VideoCapture("./busride.mp4")
-cap = cv2.VideoCapture(0)
-#print("Loaded camera")
+#True to create matplotlib diagrams with the bounding boxes. For debugging only.
+display = False
+
+camera = Picamera2()
+camera.resolution = (640,480)
+camera.start()
 if display:
     matplot.use("TkAgg")
     fig, ax = plt.subplots()
-
-#Higher for faster framerate
-#skip_frames = 10
 
 #Minimum confidence for detection
 conf_threshold = 1/3
@@ -72,37 +41,12 @@ print("Starting program")
 timetoprocess = 1
 timetoread = 0.1
 try:
-    while cap.isOpened():
-        skip_frames = int(timetoprocess / timetoread) + 1
-        timetoread = 0
-        #print(skip_frames, "frames skipped")
-        for _ in range(10): #Change 10 to skipped_frames if needed
-            a=time.time()
-            success, frame = cap.read()
-            timetoread += time.time()-a
-        timetoread /= skip_frames
-        #for c in cameras:
-        #    print(c)
-        #    try:
-        #        print("Getting camera")
-        #        cam = pygame.camera.Camera(c,(640,480))
-        #        cam.start()
-        #        print("Got camera")
-        #        break
-        #    except:
-        #        cam.stop()
-        #cam = pygame.camera.Camera("/dev/video0", (640, 480))
-        #cam.start()
-        
-        #img = cam.get_image()
-        #pygame.image.save(img,"./frame.jpeg")
-        #print("Took picture")
-        #frame = cv2.imread("./frame.jpeg")
-        timetoprocess = 0
-        a = time.time()
-        if success:
-            #cv2.imwrite("./frame.jpeg", frame)
-            results = model.track(frame, persist=True, verbose=False)
+    while True:
+        frame = camera.capture_array("main")
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2RGB)
+
+        if True:
+            results = model.predict(frame)
             #Get if object is right left or center
             def getDirection(pixval):
                 if pixval <= 0.2:
@@ -119,6 +63,7 @@ try:
             classNames = results[0].boxes.cls
             probabilities = results[0].boxes.conf
             normalizedPositions = results[0].boxes.xyxyn
+
             #A list of the objects' width then height
             objSizeImg = list(map(lambda x: (x[2].item(), x[3].item()), results[0].boxes.xywhn))
 
@@ -130,7 +75,9 @@ try:
             classNames = set([(x[0], x[2]) for x in classes])
             #List of names to report via TTS
             toReport = []
-            #How long the software should wait before re-reporting an object, in seconds. This way, if an object is continously detected, the TTS will not spam.
+
+            #How long the software should wait before re-reporting an object, in seconds.
+            #This way, if an object is continously detected, the text-to-speech will not spam.
             reportFrequency = 1
 
             #function to see if two numbers are within 10% of each other
@@ -163,16 +110,15 @@ try:
 
 
                 if time.time()-reported.get(name, 0) > reportFrequency:
-                    distance = round(distance * 1.3) #Convert meters to steps
-                    toReport.append(f'{" ".join(name)} {distance} step{"s" if distance != 1 else ""}')
-                    reported[" ".join(name)] = time.time()
+                    distance = max(round(distance * 1.3),1) #Convert meters to steps
+                    if distance <= 15:
+                        toReport.append(f'{" ".join(name)} {distance} step{"s" if distance != 1 else ""}')
+                        reported[" ".join(name)] = time.time()
 
             print(toReport)
             [engine.say(name) for name in toReport]
             engine.runAndWait()
 
-            # time.sleep(1)
-            # break
             # Visualize the results on the frame
             if display:
                 annotated_frame = results[0].plot()
@@ -182,10 +128,7 @@ try:
                 ax.imshow(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB))
                 plt.draw()
                 plt.pause(1e-3)
-            timetoprocess = time.time() - a
 except Exception as err:
-    cap.release()
     raise err
 
 plt.close()
-cap.release()

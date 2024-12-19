@@ -9,7 +9,6 @@ import math
 from objSizes import meterSizes
 #import pygame
 #import pygame.camera
-from picamera2 import Picamera2
 engine = pyttsx3.init()
 engine.say("Starting program")
 engine.runAndWait()
@@ -45,7 +44,7 @@ import sys
 
 # print(classname)
 print("Loading YOLO...")
-model = YOLO("/home/pi/yolocanefinal/yolov8s.pt")
+model = YOLO("/home/pi/yolocanefinal/yolov8n.pt")
 print("Done!")
 
 print("Initializing camera...")
@@ -54,12 +53,9 @@ print("Initializing camera...")
 #print(cameras)
 #print("Done!")
 
-display = False
+display = True
 #cap = cv2.VideoCapture("./busride.mp4")
-#cap = cv2.VideoCapture(0)
-camera = Picamera2()
-camera.resolution = (640,480)
-camera.start()
+cap = cv2.VideoCapture(0)
 #print("Loaded camera")
 if display:
     matplot.use("TkAgg")
@@ -76,10 +72,15 @@ print("Starting program")
 timetoprocess = 1
 timetoread = 0.1
 try:
-    while True:
-        frame = camera.capture_array("main")
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2RGB)
-        #frame = cv2.imread("./frame.jpeg")
+    while cap.isOpened():
+        skip_frames = int(timetoprocess / timetoread) + 1
+        timetoread = 0
+        #print(skip_frames, "frames skipped")
+        for _ in range(10): #Change 10 to skipped_frames if needed
+            a=time.time()
+            success, frame = cap.read()
+            timetoread += time.time()-a
+        timetoread /= skip_frames
         #for c in cameras:
         #    print(c)
         #    try:
@@ -97,9 +98,11 @@ try:
         #pygame.image.save(img,"./frame.jpeg")
         #print("Took picture")
         #frame = cv2.imread("./frame.jpeg")
-        if True:
+        timetoprocess = 0
+        a = time.time()
+        if success:
             #cv2.imwrite("./frame.jpeg", frame)
-            results = model.predict(frame)
+            results = model.track(frame, persist=True, verbose=False)
             #Get if object is right left or center
             def getDirection(pixval):
                 if pixval <= 0.2:
@@ -160,10 +163,9 @@ try:
 
 
                 if time.time()-reported.get(name, 0) > reportFrequency:
-                    distance = max(round(distance * 1.3),1) #Convert meters to steps
-                    if distance <= 15:
-                        toReport.append(f'{" ".join(name)} {distance} step{"s" if distance != 1 else ""}')
-                        reported[" ".join(name)] = time.time()
+                    distance = round(distance * 1.3) #Convert meters to steps
+                    toReport.append(f'{" ".join(name)} {distance} step{"s" if distance != 1 else ""}')
+                    reported[" ".join(name)] = time.time()
 
             print(toReport)
             [engine.say(name) for name in toReport]
@@ -180,9 +182,10 @@ try:
                 ax.imshow(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB))
                 plt.draw()
                 plt.pause(1e-3)
+            timetoprocess = time.time() - a
 except Exception as err:
-    #cap.release()
+    cap.release()
     raise err
 
 plt.close()
-#cap.release()
+cap.release()
